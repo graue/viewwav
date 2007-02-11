@@ -142,10 +142,13 @@ static void drawchannel(int top, int height, int left, int wzoom, int cols,
 		 * Connect this line to the last line, to avoid the
 		 * "scatterplot" look when zoomed in.
 		 */
-		if (y2 < lasty1 - 1)
-			y2 = lasty1 - 1;
-		else if (y1 > lasty2 + 1)
-			y1 = lasty2 + 1;
+		if (i > 0)
+		{
+			if (y2 < lasty1 - 1)
+				y2 = lasty1 - 1;
+			else if (y1 > lasty2 + 1)
+				y1 = lasty2 + 1;
+		}
 
 		vline(buffer, x, y1, y2, CHANNEL_FG);
 
