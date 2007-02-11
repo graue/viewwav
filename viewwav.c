@@ -195,7 +195,7 @@ static void drawtimemarkers(int top, int left, int width, int start, int num)
 	 * Divide markerinterval by 10 as long as there's still room
 	 * for each marker without overlapping the next, or getting too close.
 	 */
-	while ((1+strlen(makemarker(0, markerinterval/10))) * FONTWIDTH
+	while ((1+strlen(makemarker(endsecs, markerinterval/10))) * FONTWIDTH
 		< markerinterval/10/secsperpixel)
 	{
 		markerinterval /= 10;
