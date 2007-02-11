@@ -1,0 +1,2 @@
+#!/bin/sh
+cc *.c -W -Wall -o viewwav -lm `allegro-config --cflags --libs`
