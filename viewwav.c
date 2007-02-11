@@ -110,9 +110,11 @@ static void drawchannel(int top, int height, int left, int wzoom, int cols,
 {
 	int i, max, min;
 	int ycenter;
+	int lasty1, lasty2;
 
 	if (!(height & 1)) height--; /* force an odd height */
 	ycenter = top + height/2;
+	lasty1 = lasty2 = ycenter;
 
 	rectfill(buffer, left, top, left + cols - 1, top + height - 1,
 		CHANNEL_BG);
@@ -127,7 +129,28 @@ static void drawchannel(int top, int height, int left, int wzoom, int cols,
 		x = i + left;
 		y1 = ycenter - (max * height/2 / 32768);
 		y2 = ycenter - (min * height/2 / 32768);
+
+		/* Make y1 the one on top. */
+		if (y1 > y2)
+		{
+			const int tmp = y2;
+			y2 = y1;
+			y1 = tmp;
+		}
+
+		/*
+		 * Connect this line to the last line, to avoid the
+		 * "scatterplot" look when zoomed in.
+		 */
+		if (y2 < lasty1 - 1)
+			y2 = lasty1 - 1;
+		else if (y1 > lasty2 + 1)
+			y1 = lasty2 + 1;
+
 		vline(buffer, x, y1, y2, CHANNEL_FG);
+
+		lasty1 = y1;
+		lasty2 = y2;
 	}
 }
 
