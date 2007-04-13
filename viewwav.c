@@ -258,8 +258,10 @@ static void draw(void)
 			SCRWIDTH, pos, zoom*SCRWIDTH);
 	}
 
+	scare_mouse();
 	vsync();
 	blit(buffer, screen, 0, 0, 0, 0, SCRWIDTH, SCRHEIGHT);
+	unscare_mouse();
 }
 
 /* How many presses of an arrow key it takes to move a whole screen. */
@@ -326,6 +328,8 @@ int main(int argc, char *argv[])
 	}
 	if (install_keyboard() != 0)
 		errquit("can't install keyboard handler: %s", allegro_error);
+	if (install_timer() != 0)
+		errquit("can't install timers: %s", allegro_error);
 	if (set_gfx_mode(GFX_AUTODETECT_WINDOWED, SCRWIDTH, SCRHEIGHT, 0, 0)
 		!= 0)
 	{
@@ -334,6 +338,7 @@ int main(int argc, char *argv[])
 	buffer = create_bitmap(SCRWIDTH, SCRHEIGHT);
 	if (buffer == NULL)
 		errquit("can't create buffer: %s", allegro_error);
+	show_mouse(screen);
 
 	if (argc != 2)
 		errquit("incorrect usage; usage: viewwav file.wav");
