@@ -42,7 +42,7 @@ enum
 
 #define SCREEN_BG GRAY
 #define CHANNEL_BG BLACK
-#define CHANNEL_FG LIGHT_GREEN
+#define CHANNEL_PEAK_COLOR LIGHT_GREEN
 #define CHANNEL_DCLINE LIGHT_GRAY
 #define MARKER_FG WHITE
 #define MARKER_TEXT WHITE
@@ -176,7 +176,7 @@ static void drawchannel(int top, int height, int left, int wzoom, int cols,
 				y1 = lasty2 + 1;
 		}
 
-		vline(buffer, x, y1, y2, CHANNEL_FG);
+		vline(buffer, x, y1, y2, CHANNEL_PEAK_COLOR);
 
 		lasty1 = y1;
 		lasty2 = y2;
