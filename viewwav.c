@@ -43,9 +43,12 @@ enum
 #define SCREEN_BG GRAY
 #define CHANNEL_BG BLACK
 #define CHANNEL_PEAK_COLOR LIGHT_GREEN
+#define CHANNEL_RMS_COLOR CYAN
 #define CHANNEL_DCLINE LIGHT_GRAY
 #define MARKER_FG WHITE
 #define MARKER_TEXT WHITE
+
+#define RMS_MIN_SAMPLES ((int)(RATE * 0.001))
 
 /*
  * Get the minimum and maximum of num samples, starting at start.
@@ -100,6 +103,98 @@ static void getminmax(int odd, int start, int num, int *pmin, int *pmax)
 	*pmax = max;
 }
 
+/* Calculate the RMS average and return it. */
+static double calcrms(int odd, int start, int num)
+{
+	int ix;
+	int samp;
+	double total = 0.0;
+
+	for (ix = 0; ix < num; ix++)
+	{
+		double f;
+
+		GETSAMP(start+ix, samp)
+		f = (samp / 32768.0);
+		total += f * f;
+	}
+	return sqrt(total / num);
+}
+
+static int lastpeaky1, lastpeaky2;
+static int lastrmsy1, lastrmsy2;
+static int chan_i;
+
+/* Draw a column of a channel of audio. */
+static void drawcolumn(int x, int top, int height, int min, int max, int rms)
+{
+	int y1, y2;
+	const int lasty1 = rms ? lastrmsy1 : lastpeaky1;
+	const int lasty2 = rms ? lastrmsy2 : lastpeaky2;
+
+	if (!logdisp) /* Linear display. */
+	{
+		int ycenter = top + height/2;
+		y1 = ycenter - (max * height/2 / 32768);
+		y2 = ycenter - (min * height/2 / 32768);
+	}
+	else /* Logarithmic display. */
+	{
+		double maxdb, mindb;
+
+		/* Avoid negative infinity when taking logs. */
+		if (max == 0) max = 1;
+		if (min == 0) min = 1;
+
+		maxdb = 20.0 * log10((double)abs(max) / 32768.0);
+		mindb = 20.0 * log10((double)abs(min) / 32768.0);
+
+		/*
+		 * XXX is this clamping necessary? should it be?
+		 * Note: 96 dB is maximum dynamic range of 16-bit
+		 * samples, in theory.
+		 */
+		if (maxdb > 0.0) maxdb = 0.0;
+		if (mindb < -96.0) mindb = -96.0;
+
+		y1 = (int)(top - mindb * height / 96.0);
+		y2 = (int)(top - maxdb * height / 96.0);
+	}
+
+	/* Make y1 the one on top. */
+	if (y1 > y2)
+	{
+		const int tmp = y2;
+		y2 = y1;
+		y1 = tmp;
+	}
+
+	/*
+	 * Connect this line to the last line, to avoid the
+	 * "scatterplot" look when zoomed in.
+	 */
+	if (chan_i > 0)
+	{
+		if (y2 < lasty1 - 1)
+			y2 = lasty1 - 1;
+		else if (y1 > lasty2 + 1)
+			y1 = lasty2 + 1;
+	}
+
+	vline(buffer, x, y1, y2, rms ? CHANNEL_RMS_COLOR : CHANNEL_PEAK_COLOR);
+
+	if (rms)
+	{
+		lastrmsy1 = y1;
+		lastrmsy2 = y2;
+	}
+	else
+	{
+		lastpeaky1 = y1;
+		lastpeaky2 = y2;
+	}
+}
+
 /*
  * Draw a channel of audio.
  * top = topmost pixel, height = height, left = leftmost pixel,
@@ -109,77 +204,40 @@ static void getminmax(int odd, int start, int num, int *pmin, int *pmax)
 static void drawchannel(int top, int height, int left, int wzoom, int cols,
 	int odd, int start)
 {
-	int i, max, min;
-	int ycenter;
-	int lasty1, lasty2;
+	int max, min;
+	int skiprms;
 
 	if (!(height & 1)) height--; /* force an odd height */
-	ycenter = top + height/2;
-	lasty1 = lasty2 = ycenter;
+
+	lastpeaky1 = lastpeaky2 = lastrmsy1 = lastrmsy2 = top + height/2;
+
+	/* If there are too few samples for each column, skip RMS. */
+	skiprms = wzoom < RMS_MIN_SAMPLES;
 
 	rectfill(buffer, left, top, left + cols - 1, top + height - 1,
 		CHANNEL_BG);
-	hline(buffer, left, ycenter, left + cols - 1, CHANNEL_DCLINE);
 
-	for (i = 0; i < cols; i++)
+	if (!logdisp)
 	{
-		int x, y1, y2;
+		hline(buffer, left, top + height/2, left + cols - 1,
+			CHANNEL_DCLINE);
+	}
 
-		getminmax(odd, start + i*wzoom, wzoom, &min, &max);
+	for (chan_i = 0; chan_i < cols; chan_i++)
+	{
+		double rmsval;
+		int rmsint;
 
-		x = i + left;
-		if (!logdisp) /* Linear display. */
+		getminmax(odd, start + chan_i*wzoom, wzoom, &min, &max);
+		drawcolumn(chan_i + left, top, height, min, max, 0);
+
+		if (!skiprms)
 		{
-			y1 = ycenter - (max * height/2 / 32768);
-			y2 = ycenter - (min * height/2 / 32768);
+			rmsval = calcrms(odd, start + chan_i*wzoom, wzoom);
+			rmsint = (int)(32768.0 * rmsval);
+			drawcolumn(chan_i + left, top, height,
+				-rmsint, rmsint, 1);
 		}
-		else /* Logarithmic display. */
-		{
-			double maxdb, mindb;
-
-			/* Avoid negative infinity when taking logs. */
-			if (max == 0) max = 1;
-			if (min == 0) min = 1;
-
-			maxdb = 20.0 * log10((double)abs(max) / 32768.0);
-			mindb = 20.0 * log10((double)abs(min) / 32768.0);
-
-			/*
-			 * XXX is this clamping necessary? should it be?
-			 * Note: 96 dB is maximum dynamic range of 16-bit
-			 * samples, in theory.
-			 */
-			if (maxdb > 0.0) maxdb = 0.0;
-			if (mindb < -96.0) mindb = -96.0;
-
-			y1 = (int)(top - mindb * height / 96.0);
-			y2 = (int)(top - maxdb * height / 96.0);
-		}
-
-		/* Make y1 the one on top. */
-		if (y1 > y2)
-		{
-			const int tmp = y2;
-			y2 = y1;
-			y1 = tmp;
-		}
-
-		/*
-		 * Connect this line to the last line, to avoid the
-		 * "scatterplot" look when zoomed in.
-		 */
-		if (i > 0)
-		{
-			if (y2 < lasty1 - 1)
-				y2 = lasty1 - 1;
-			else if (y1 > lasty2 + 1)
-				y1 = lasty2 + 1;
-		}
-
-		vline(buffer, x, y1, y2, CHANNEL_PEAK_COLOR);
-
-		lasty1 = y1;
-		lasty2 = y2;
 	}
 }
 
