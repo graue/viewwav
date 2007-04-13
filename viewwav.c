@@ -30,6 +30,7 @@ static int16_t *samples;
 static int numsamples;
 static int zoom = 1; /* Number of samples in each pixel. */
 static int pos = 0; /* Sample value at leftmost pixel. */
+static int logdisp = 0; /* Use logarithmic display? */
 static BITMAP *buffer;
 
 enum
@@ -127,8 +128,33 @@ static void drawchannel(int top, int height, int left, int wzoom, int cols,
 		getminmax(odd, start + i*wzoom, wzoom, &min, &max);
 
 		x = i + left;
-		y1 = ycenter - (max * height/2 / 32768);
-		y2 = ycenter - (min * height/2 / 32768);
+		if (!logdisp) /* Linear display. */
+		{
+			y1 = ycenter - (max * height/2 / 32768);
+			y2 = ycenter - (min * height/2 / 32768);
+		}
+		else /* Logarithmic display. */
+		{
+			double maxdb, mindb;
+
+			/* Avoid negative infinity when taking logs. */
+			if (max == 0) max = 1;
+			if (min == 0) min = 1;
+
+			maxdb = 20.0 * log10((double)abs(max) / 32768.0);
+			mindb = 20.0 * log10((double)abs(min) / 32768.0);
+
+			/*
+			 * XXX is this clamping necessary? should it be?
+			 * Note: 96 dB is maximum dynamic range of 16-bit
+			 * samples, in theory.
+			 */
+			if (maxdb > 0.0) maxdb = 0.0;
+			if (mindb < -96.0) mindb = -96.0;
+
+			y1 = (int)(top - mindb * height / 96.0);
+			y2 = (int)(top - maxdb * height / 96.0);
+		}
 
 		/* Make y1 the one on top. */
 		if (y1 > y2)
@@ -236,6 +262,9 @@ static void draw(void)
 	blit(buffer, screen, 0, 0, 0, 0, SCRWIDTH, SCRHEIGHT);
 }
 
+/* How many presses of an arrow key it takes to move a whole screen. */
+#define SCREEN_INTERVAL 10
+
 /* Return 1 to quit. */
 static int cycle(void)
 {
@@ -243,18 +272,36 @@ static int cycle(void)
 
 	draw();
 	READKEY(keyval, keyascii);
-	if (keyval == KEY_LEFT)
+	if (keyval == KEY_PGUP)
 		pos -= SCRWIDTH * zoom;
-	else if (keyval == KEY_RIGHT)
+	else if (keyval == KEY_PGDN)
 		pos += SCRWIDTH * zoom;
+	else if (keyval == KEY_LEFT)
+		pos -= SCRWIDTH * zoom / SCREEN_INTERVAL;
+	else if (keyval == KEY_RIGHT)
+		pos += SCRWIDTH * zoom / SCREEN_INTERVAL;
 	else if (keyval == KEY_HOME)
 		pos = 0;
 	else if (keyval == KEY_END)
 		pos = numsamples - SCRWIDTH*zoom;
 	else if (keyval == KEY_UP) /* zoom in */
+	{
+		pos += SCRWIDTH*zoom/2;
 		zoom /= 2;
+		if (zoom < 1)
+			zoom = 1;
+		pos -= SCRWIDTH*zoom/2;
+	}
 	else if (keyval == KEY_DOWN) /* zoom out */
+	{
+		pos += SCRWIDTH*zoom/2;
 		zoom *= 2;
+		if (zoom > numsamples/SCRWIDTH)
+			zoom = numsamples/SCRWIDTH;
+		pos -= SCRWIDTH*zoom/2;
+	}
+	else if (keyascii == 'l' || keyascii == 'L') /* toggle log view */
+		logdisp = !logdisp;
 	else if (keyval == KEY_ESC) /* quit */
 		return 1;
 
@@ -262,10 +309,6 @@ static int cycle(void)
 		pos = numsamples - SCRWIDTH*zoom;
 	if (pos < 0)
 		pos = 0;
-	if (zoom > numsamples/SCRWIDTH)
-		zoom = numsamples/SCRWIDTH;
-	if (zoom < 1)
-		zoom = 1;
 
 	return 0;
 }
