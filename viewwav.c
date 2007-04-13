@@ -31,6 +31,7 @@ static int numsamples;
 static int zoom = 1; /* Number of samples in each pixel. */
 static int pos = 0; /* Sample value at leftmost pixel. */
 static int logdisp = 0; /* Use logarithmic display? */
+static int rmsdisp = 0; /* Show RMS averages? */
 static BITMAP *buffer;
 
 enum
@@ -212,7 +213,7 @@ static void drawchannel(int top, int height, int left, int wzoom, int cols,
 	lastpeaky1 = lastpeaky2 = lastrmsy1 = lastrmsy2 = top + height/2;
 
 	/* If there are too few samples for each column, skip RMS. */
-	skiprms = wzoom < RMS_MIN_SAMPLES;
+	skiprms = rmsdisp ? (wzoom < RMS_MIN_SAMPLES) : 1;
 
 	rectfill(buffer, left, top, left + cols - 1, top + height - 1,
 		CHANNEL_BG);
@@ -362,6 +363,8 @@ static int cycle(void)
 	}
 	else if (keyascii == 'l' || keyascii == 'L') /* toggle log view */
 		logdisp = !logdisp;
+	else if (keyascii == 'r' || keyascii == 'R') /* toggle rms display */
+		rmsdisp = !rmsdisp;
 	else if (keyval == KEY_ESC) /* quit */
 		return 1;
 
