@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
@@ -15,6 +16,7 @@
 #endif
 
 #include <allegro.h>
+#include "xm.h"
 #include "readfile.h"
 #include "errquit.h"
 #include "binmode.h"
@@ -23,6 +25,11 @@
 #ifndef DBL_EPSILON
 #define DBL_EPSILON 2.2204460492503131E-16
 #endif
+
+#undef MIN
+#undef MAX
+#define MIN(a,b) ((a) < (b) ? (a) : (b))
+#define MAX(a,b) ((a) > (b) ? (a) : (b))
 
 #define SCRWIDTH 640
 #define SCRHEIGHT 480
@@ -37,12 +44,25 @@
 } while(0)
 
 static int16_t *samples;
-static int numsamples;
+static int numsamples; // Number of samples per channel.
 static int zoom = 1; /* Number of samples in each pixel. */
 static int pos = 0; /* Sample value at leftmost pixel. */
 static int logdisp = 0; /* Use logarithmic display? */
 static int rmsdisp = 0; /* Show RMS averages? */
 static BITMAP *buffer;
+
+/* Peak and RMS info about blocks. */
+#define SAMPLES_PER_BLOCK 1024
+static int numblocks = 0;
+#define PEAK_FILLED_IN(chan) (1<<(2*(chan)))
+#define SOS_FILLED_IN(chan) (1<<(2*(chan)+1))
+typedef struct
+{
+	double sumofsquares[2];
+	int max[2], min[2];
+	unsigned char filledin; // The two flags OR'd together.
+} block_t;
+static block_t *blocks;
 
 enum
 {
@@ -61,6 +81,12 @@ enum
 
 #define RMS_MIN_SAMPLES ((int)(RATE * 0.001))
 
+#define GETSAMP(n,s,o)				\
+	if ((n) >= numsamples)			\
+		(s) = 0;			\
+	else					\
+		(s) = samples[(n)*2 + o];
+
 /*
  * Get the minimum and maximum of num samples, starting at start.
  * odd == 1 means get right-channel samples, otherwise left.
@@ -71,12 +97,6 @@ static void getminmax(int odd, int start, int num, int *pmin, int *pmax)
 	int ix;
 	int samp[2];
 
-#define GETSAMP(n,s)				\
-	if ((n) >= numsamples)			\
-		(s) = 0;			\
-	else					\
-		(s) = samples[(n)*2 + odd];
-
 	if (num == 0)
 	{
 		*pmin = *pmax = 0;
@@ -85,15 +105,15 @@ static void getminmax(int odd, int start, int num, int *pmin, int *pmax)
 
 	if (num & 1)
 	{
-		GETSAMP(start, min)
+		GETSAMP(start, min, odd)
 		max = min;
 		start++, num--;
 	}
 
 	for (ix = 0; ix < num; ix += 2)
 	{
-		GETSAMP(start+ix, samp[0])
-		GETSAMP(start+ix+1, samp[1])
+		GETSAMP(start+ix, samp[0], odd)
+		GETSAMP(start+ix+1, samp[1], odd)
 		if (samp[1] < samp[0])
 		{
 			if (samp[1] < min)
@@ -114,22 +134,123 @@ static void getminmax(int odd, int start, int num, int *pmin, int *pmax)
 	*pmax = max;
 }
 
-/* Calculate the RMS average and return it. */
-static double calcrms(int odd, int start, int num)
+// Calculate the sum of squares of samples and return it,
+// without using blocks to speed up the process.
+static double calcsos_raw(int odd, int start, int num)
 {
 	int ix;
 	int samp;
 	double total = 0.0;
+	const int end = start + num - 1;
 
-	for (ix = 0; ix < num; ix++)
+	if (num <= 0)
+		return 0.0;
+
+	for (ix = start; ix <= end; ix++)
 	{
 		double f;
 
-		GETSAMP(start+ix, samp)
-		f = (samp / 32768.0);
+		GETSAMP(ix, samp, odd)
+		f = samp / 32768.0;
 		total += f * f;
 	}
-	return sqrt(total / num);
+	return total;
+}
+
+// Like calcsos_raw(), but takes a first and last sample value
+// to consider, for convenience.
+static double calcsos_raw_se(int odd, int start, int end)
+{
+	return calcsos_raw(odd, start, end - start + 1);
+}
+
+// Calculate the sum of squares of samples and return it.
+static double calcsos(int odd, int start, int num)
+{
+	double total = 0.0;
+	int block;
+	int startblock, endblock;
+	int end;
+	double blocktotal;
+
+	if (start + num > numsamples)
+		num = numsamples - start;
+	if (num <= 0)
+		return 0.0;
+	end = start + num - 1;
+
+	startblock = start / SAMPLES_PER_BLOCK;
+	endblock = (start + num - 1) / SAMPLES_PER_BLOCK;
+
+	assert(startblock >= 0);
+	assert(endblock < numblocks);
+	assert((endblock+1)*SAMPLES_PER_BLOCK > end);
+
+	for (block = startblock; block <= endblock; block++)
+	{
+		int blkfirst, blklast;
+
+		blkfirst = block * SAMPLES_PER_BLOCK;
+		blklast = (block+1) * SAMPLES_PER_BLOCK - 1;
+		if (blklast >= numsamples)
+			blklast = numsamples - 1;
+
+		if (!(blocks[block].filledin & SOS_FILLED_IN(odd)))
+		{
+			// Fill in the block, adding the relevant samples.
+
+			double common;
+
+			blocktotal = 0.0;
+			if (blkfirst < start)
+			{
+				blocktotal += calcsos_raw_se(odd, blkfirst,
+					start - 1);
+			}
+			if (blklast > end)
+			{
+				blocktotal += calcsos_raw_se(odd, end + 1,
+					blklast);
+			}
+			common = calcsos_raw_se(odd, MAX(blkfirst, start),
+				MIN(blklast, end));
+			blocktotal += common;
+			total += common;
+
+			// Fill in the sum in the block.
+			blocks[block].sumofsquares[odd] = blocktotal;
+			blocks[block].filledin |= SOS_FILLED_IN(odd);
+		}
+		else if (blkfirst >= start && blklast <= end)
+		{
+			// The block is filled in and entirely contained
+			// within the range of samples we're interested in.
+			total += blocks[block].sumofsquares[odd];
+		}
+		else
+		{
+			// Block's filled in, but we can't use it.
+			// We're not interested in all of it.
+			total += calcsos_raw_se(odd, MAX(blkfirst, start),
+				MIN(blklast, end));
+		}
+	}
+
+	return total;
+}
+
+// Calculate the RMS average and return it.
+static double calcrms(int odd, int start, int num)
+{
+	return sqrt(calcsos(odd, start, num) / num);
+}
+
+// Initialize the blocks. Note we don't fill them in yet.
+static void initblocks(void)
+{
+	numblocks = (numsamples + SAMPLES_PER_BLOCK - 1) / SAMPLES_PER_BLOCK;
+	blocks = xm(sizeof *blocks, numblocks);
+	memset(blocks, 0, sizeof *blocks * numblocks);
 }
 
 static int lastpeaky1, lastpeaky2;
@@ -427,6 +548,7 @@ int main(int argc, char *argv[])
 
 	samples = data;
 	numsamples = datalen / (2 * sizeof (int16_t));
+	initblocks();
 	while (!cycle())
 		;
 	return 0;
