@@ -87,12 +87,16 @@ enum
 	else					\
 		(s) = samples[(n)*2 + o];
 
+#define SAMP_DIV_FLOAT 32768.0 // Divide by this to convert to a float.
+#define MAXSAMP 32767
+#define MINSAMP -32768
+
 // Get the minimum and maximum of num samples, starting at start.
 // odd == 1 means get right-channel samples, otherwise left.
 // This "raw" version does not use blocks.
 static void getminmax_raw(int odd, int start, int num, int *pmin, int *pmax)
 {
-	int min = 32768, max = -32767;
+	int min = MAXSAMP, max = MINSAMP;
 	int ix;
 	int samp[2];
 
@@ -156,7 +160,7 @@ static double calcsos_raw(int odd, int start, int num)
 		double f;
 
 		GETSAMP(ix, samp, odd)
-		f = samp / 32768.0;
+		f = samp / SAMP_DIV_FLOAT;
 		total += f * f;
 	}
 	return total;
@@ -173,7 +177,7 @@ static double calcsos_raw_se(int odd, int start, int end)
 // odd == 1 means get right-channel samples, otherwise left.
 static void getminmax(int odd, int start, int num, int *pmin, int *pmax)
 {
-	int min = 32768, max = -32767;
+	int min = MAXSAMP, max = MINSAMP;
 	int block;
 	int startblock, endblock;
 	int end;
@@ -209,8 +213,8 @@ static void getminmax(int odd, int start, int num, int *pmin, int *pmax)
 		{
 			// Fill in the block, including the relevant samples.
 
-			blockmin = 32768;
-			blockmax = -32767;
+			blockmin = MAXSAMP;
+			blockmax = MINSAMP;
 			if (blkfirst < start)
 			{
 				getminmax_raw_se(odd, blkfirst, start - 1,
@@ -360,8 +364,8 @@ static void drawcolumn(int x, int top, int height, int min, int max, int rms)
 	if (!logdisp) /* Linear display. */
 	{
 		int ycenter = top + height/2;
-		y1 = ycenter - (max * height/2 / 32768);
-		y2 = ycenter - (min * height/2 / 32768);
+		y1 = ycenter - (int)(max * height/2 / SAMP_DIV_FLOAT);
+		y2 = ycenter - (int)(min * height/2 / SAMP_DIV_FLOAT);
 	}
 	else /* Logarithmic display. */
 	{
@@ -371,8 +375,8 @@ static void drawcolumn(int x, int top, int height, int min, int max, int rms)
 		if (max == 0) max = 1;
 		if (min == 0) min = 1;
 
-		maxdb = 20.0 * log10((double)abs(max) / 32768.0);
-		mindb = 20.0 * log10((double)abs(min) / 32768.0);
+		maxdb = 20.0 * log10((double)abs(max) / SAMP_DIV_FLOAT);
+		mindb = 20.0 * log10((double)abs(min) / SAMP_DIV_FLOAT);
 
 		/*
 		 * XXX is this clamping necessary? should it be?
@@ -459,7 +463,7 @@ static void drawchannel(int top, int height, int left, int wzoom, int cols,
 		if (!skiprms)
 		{
 			rmsval = calcrms(odd, start + chan_i*wzoom, wzoom);
-			rmsint = (int)(32768.0 * rmsval);
+			rmsint = (int)(SAMP_DIV_FLOAT * rmsval);
 			drawcolumn(chan_i + left, top, height,
 				-rmsint, rmsint, 1);
 		}
