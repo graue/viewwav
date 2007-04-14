@@ -9,10 +9,19 @@
 #include <unistd.h>
 #define _REST(ms) usleep(1000*ms)
 #endif
+
+#ifdef __OpenBSD__
 #include <float.h> /* XXX: for DBL_EPSILON but dunno if non-BSD OSes have it */
+#endif
+
 #include <allegro.h>
 #include "readfile.h"
 #include "errquit.h"
+
+/* XXX */
+#ifndef DBL_EPSILON
+#define DBL_EPSILON 2.2204460492503131E-16
+#endif
 
 #define SCRWIDTH 640
 #define SCRHEIGHT 480
