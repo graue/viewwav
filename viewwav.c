@@ -17,6 +17,7 @@
 #include <allegro.h>
 #include "readfile.h"
 #include "errquit.h"
+#include "binmode.h"
 
 /* XXX */
 #ifndef DBL_EPSILON
@@ -412,11 +413,17 @@ int main(int argc, char *argv[])
 
 	if (argc != 2)
 		errquit("incorrect usage; usage: viewwav file.wav");
-	if ((fp = fopen(argv[1], "rb")) == NULL)
+	if (strcmp("-", argv[1]) == 0)
+	{
+		fp = stdin;
+		SET_BINARY_MODE
+	}
+	else if ((fp = fopen(argv[1], "rb")) == NULL)
 		errquit("cannot open %s", argv[1]);
 	data = readfile(fp, &datalen);
 	/* XXX todo: swap if big endian */
-	fclose(fp);
+	if (fp != stdin)
+		fclose(fp);
 
 	samples = data;
 	numsamples = datalen / (2 * sizeof (int16_t));
