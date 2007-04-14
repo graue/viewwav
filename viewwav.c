@@ -87,11 +87,10 @@ enum
 	else					\
 		(s) = samples[(n)*2 + o];
 
-/*
- * Get the minimum and maximum of num samples, starting at start.
- * odd == 1 means get right-channel samples, otherwise left.
- */
-static void getminmax(int odd, int start, int num, int *pmin, int *pmax)
+// Get the minimum and maximum of num samples, starting at start.
+// odd == 1 means get right-channel samples, otherwise left.
+// This "raw" version does not use blocks.
+static void getminmax_raw(int odd, int start, int num, int *pmin, int *pmax)
 {
 	int min = 32768, max = -32767;
 	int ix;
@@ -134,6 +133,12 @@ static void getminmax(int odd, int start, int num, int *pmin, int *pmax)
 	*pmax = max;
 }
 
+// Like getminmax_raw, but taking a start and end parameter for convenience.
+static void getminmax_raw_se(int odd, int start, int end, int *pmin, int *pmax)
+{
+	getminmax_raw(odd, start, end - start + 1, pmin, pmax);
+}
+
 // Calculate the sum of squares of samples and return it,
 // without using blocks to speed up the process.
 static double calcsos_raw(int odd, int start, int num)
@@ -162,6 +167,94 @@ static double calcsos_raw(int odd, int start, int num)
 static double calcsos_raw_se(int odd, int start, int end)
 {
 	return calcsos_raw(odd, start, end - start + 1);
+}
+
+// Get the minimum and maximum of num samples, starting at start.
+// odd == 1 means get right-channel samples, otherwise left.
+static void getminmax(int odd, int start, int num, int *pmin, int *pmax)
+{
+	int min = 32768, max = -32767;
+	int block;
+	int startblock, endblock;
+	int end;
+	int blockmin, blockmax;
+	int tmpmin, tmpmax;
+
+	if (start + num > numsamples)
+		num = numsamples - start;
+	if (num <= 0)
+	{
+		*pmin = *pmax = 0;
+		return;
+	}
+	end = start + num - 1;
+
+	startblock = start / SAMPLES_PER_BLOCK;
+	endblock = (start + num - 1) / SAMPLES_PER_BLOCK;
+
+	assert(startblock >= 0);
+	assert(endblock < numblocks);
+	assert((endblock+1)*SAMPLES_PER_BLOCK > end);
+
+	for (block = startblock; block <= endblock; block++)
+	{
+		int blkfirst, blklast;
+
+		blkfirst = block * SAMPLES_PER_BLOCK;
+		blklast = (block+1) * SAMPLES_PER_BLOCK - 1;
+		if (blklast >= numsamples)
+			blklast = numsamples - 1;
+
+		if (!(blocks[block].filledin & PEAK_FILLED_IN(odd)))
+		{
+			// Fill in the block, including the relevant samples.
+
+			blockmin = 32768;
+			blockmax = -32767;
+			if (blkfirst < start)
+			{
+				getminmax_raw_se(odd, blkfirst, start - 1,
+					&blockmin, &blockmax);
+			}
+			if (blklast > end)
+			{
+				getminmax_raw_se(odd, end + 1, blklast,
+					&tmpmin, &tmpmax);
+				blockmin = MIN(blockmin, tmpmin);
+				blockmax = MAX(blockmax, tmpmax);
+			}
+			getminmax_raw_se(odd, MAX(blkfirst, start),
+				MIN(blklast, end), &tmpmin, &tmpmax);
+			min = MIN(min, tmpmin);
+			max = MAX(max, tmpmax);
+			blockmin = MIN(blockmin, tmpmin);
+			blockmax = MAX(blockmax, tmpmax);
+
+			// Fill in the sum in the block.
+			blocks[block].min[odd] = blockmin;
+			blocks[block].max[odd] = blockmax;
+			blocks[block].filledin |= PEAK_FILLED_IN(odd);
+		}
+		else if (blkfirst >= start && blklast <= end)
+		{
+			// The block is filled in and entirely contained
+			// within the range of samples we're interested in.
+			min = MIN(min, blocks[block].min[odd]);
+			max = MAX(max, blocks[block].max[odd]);
+		}
+		else
+		{
+			// Block's filled in, but we can't use it.
+			// We're not interested in all of it.
+			getminmax_raw_se(odd, MAX(blkfirst, start),
+				MIN(blklast, end), &tmpmin, &tmpmax);
+			min = MIN(min, tmpmin);
+			max = MAX(max, tmpmax);
+		}
+	}
+
+	*pmin = min;
+	*pmax = max;
 }
 
 // Calculate the sum of squares of samples and return it.
