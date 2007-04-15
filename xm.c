@@ -1,6 +1,6 @@
+#include <stdio.h>
 #include <stdlib.h>
 #include <limits.h>
-#include "err.h"
 
 /* MinGW (for example) appears to lack SIZE_T_MAX. */
 #ifndef SIZE_T_MAX
@@ -32,18 +32,20 @@ static size_t sizmul(size_t size, size_t nmemb)
 {
 	if (SIZE_T_MAX / size <= nmemb)
 	{
-		errx(1, "allocating %lu objects of size %lu "
+		fprintf(stderr, "allocating %lu objects of size %lu "
 			"would overflow", (unsigned long)nmemb,
 			(unsigned long)size);
+		exit(EXIT_FAILURE);
 	}
 	return size * nmemb; /* won't overflow */
 }
 
 static void nomem(size_t size, size_t nmemb)
 {
-	err(1, "cannot allocate %lu objects of size %lu"
+	fprintf(stderr, "cannot allocate %lu objects of size %lu"
 		"(total %lu bytes)", (unsigned long)nmemb,
 		(unsigned long)size, (unsigned long)(nmemb*size));
+	exit(EXIT_FAILURE);
 }
 
 void *xm(size_t size, size_t nmemb)
