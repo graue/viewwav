@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+#include <ctype.h>
 #include <math.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -48,6 +49,7 @@ static int numsamples; // Number of samples per channel.
 static int zoom = 1; /* Number of samples in each pixel. */
 static int pos = 0; /* Sample value at leftmost pixel. */
 static int logdisp = 0; /* Use logarithmic display? */
+static int peakdisp = 1; /* Show peaks? */
 static int rmsdisp = 0; /* Show RMS averages? */
 static BITMAP *buffer;
 
@@ -457,8 +459,11 @@ static void drawchannel(int top, int height, int left, int wzoom, int cols,
 		double rmsval;
 		int rmsint;
 
-		getminmax(odd, start + chan_i*wzoom, wzoom, &min, &max);
-		drawcolumn(chan_i + left, top, height, min, max, 0);
+		if (peakdisp)
+		{
+			getminmax(odd, start + chan_i*wzoom, wzoom, &min, &max);
+			drawcolumn(chan_i + left, top, height, min, max, 0);
+		}
 
 		if (!skiprms)
 		{
@@ -589,9 +594,11 @@ static int cycle(void)
 			zoom = numsamples/SCRWIDTH;
 		pos -= SCRWIDTH*zoom/2;
 	}
-	else if (keyascii == 'l' || keyascii == 'L') /* toggle log view */
+	else if (tolower(keyascii) == 'l') /* toggle log view */
 		logdisp = !logdisp;
-	else if (keyascii == 'r' || keyascii == 'R') /* toggle rms display */
+	else if (tolower(keyascii) == 'p') /* peak display */
+		peakdisp = !peakdisp;
+	else if (tolower(keyascii) == 'r') /* rms display */
 		rmsdisp = !rmsdisp;
 	else if (keyval == KEY_ESC) /* quit */
 		return 1;
