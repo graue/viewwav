@@ -77,7 +77,12 @@ enum
 #define CHANNEL_BG BLACK
 #define CHANNEL_PEAK_COLOR LIGHT_GREEN
 #define CHANNEL_RMS_COLOR CYAN
-#define CHANNEL_DCLINE LIGHT_GRAY
+#define CHANNEL_DCLINE_COLOR LIGHT_GRAY
+#define CHANNEL_LOGGUIDE_COLOR_MAJOR (makecol(120, 120, 120))
+#define CHANNEL_LOGGUIDE_COLOR_MINOR (makecol(92, 92, 92))
+#define CHANNEL_LOGGUIDE_SPACING 6 // 6 dB between guide lines.
+#define CHANNEL_LOGGUIDE_MAJOR_SPACING (2*CHANNEL_LOGGUIDE_SPACING)
+#define MAX_DB_RANGE 96.0
 #define MARKER_FG WHITE
 #define MARKER_TEXT WHITE
 
@@ -386,10 +391,10 @@ static void drawcolumn(int x, int top, int height, int min, int max, int rms)
 		 * samples, in theory.
 		 */
 		if (maxdb > 0.0) maxdb = 0.0;
-		if (mindb < -96.0) mindb = -96.0;
+		if (mindb < -MAX_DB_RANGE) mindb = -MAX_DB_RANGE;
 
-		y1 = (int)(top - mindb * height / 96.0);
-		y2 = (int)(top - maxdb * height / 96.0);
+		y1 = (int)(top - mindb * height / MAX_DB_RANGE);
+		y2 = (int)(top - maxdb * height / MAX_DB_RANGE);
 	}
 
 	/* Make y1 the one on top. */
@@ -448,10 +453,23 @@ static void drawchannel(int top, int height, int left, int wzoom, int cols,
 	rectfill(buffer, left, top, left + cols - 1, top + height - 1,
 		CHANNEL_BG);
 
-	if (!logdisp)
+	if (logdisp)
+	{
+		int ix;
+		for (ix = CHANNEL_LOGGUIDE_SPACING; ix < MAX_DB_RANGE;
+			ix += CHANNEL_LOGGUIDE_SPACING)
+		{
+			const int y = (int)(top + ix * height / MAX_DB_RANGE);
+			hline(buffer, left, y, left + cols - 1,
+				ix % CHANNEL_LOGGUIDE_MAJOR_SPACING == 0
+					? CHANNEL_LOGGUIDE_COLOR_MAJOR
+					: CHANNEL_LOGGUIDE_COLOR_MINOR);
+		}
+	}
+	else
 	{
 		hline(buffer, left, top + height/2, left + cols - 1,
-			CHANNEL_DCLINE);
+			CHANNEL_DCLINE_COLOR);
 	}
 
 	for (chan_i = 0; chan_i < cols; chan_i++)
