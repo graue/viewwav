@@ -385,6 +385,16 @@ static void drawcolumn(int x, int top, int height, int min, int max, int rms)
 		maxdb = 20.0 * log10((double)abs(max) / SAMP_DIV_FLOAT);
 		mindb = 20.0 * log10((double)abs(min) / SAMP_DIV_FLOAT);
 
+		// When drawing logarithmic peak graphs, don't allow
+		// asymmetry to fubar the display.
+		if (!rms)
+		{
+			if (mindb < maxdb)
+				mindb = maxdb;
+			else
+				maxdb = mindb;
+		}
+
 		/*
 		 * XXX is this clamping necessary? should it be?
 		 * Note: 96 dB is maximum dynamic range of 16-bit
