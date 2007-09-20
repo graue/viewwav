@@ -75,8 +75,10 @@ enum
 
 #define SCREEN_BG GRAY
 #define CHANNEL_BG BLACK
-#define CHANNEL_PEAK_COLOR LIGHT_GREEN
-#define CHANNEL_RMS_COLOR CYAN
+#define CHANNEL_LOG_PEAK_COLOR LIGHT_GREEN
+#define CHANNEL_LIN_PEAK_COLOR LIGHT_GREEN
+#define CHANNEL_LOG_RMS_COLOR LIGHT_CYAN
+#define CHANNEL_LIN_RMS_COLOR CYAN
 #define CHANNEL_DCLINE_COLOR LIGHT_GRAY
 #define CHANNEL_LOGGUIDE_COLOR_MAJOR (makecol(120, 120, 120))
 #define CHANNEL_LOGGUIDE_COLOR_MINOR (makecol(92, 92, 92))
@@ -367,6 +369,7 @@ static void drawcolumn(int x, int top, int height, int min, int max, int rms)
 	int y1, y2;
 	const int lasty1 = rms ? lastrmsy1 : lastpeaky1;
 	const int lasty2 = rms ? lastrmsy2 : lastpeaky2;
+	int color;
 
 	if (!logdisp) /* Linear display. */
 	{
@@ -427,7 +430,15 @@ static void drawcolumn(int x, int top, int height, int min, int max, int rms)
 			y1 = lasty2 + 1;
 	}
 
-	vline(buffer, x, y1, y2, rms ? CHANNEL_RMS_COLOR : CHANNEL_PEAK_COLOR);
+	if (rms)
+	{
+		if (logdisp) color = CHANNEL_LOG_RMS_COLOR;
+		else color = CHANNEL_LIN_RMS_COLOR;
+	}
+	else if (logdisp) color = CHANNEL_LOG_PEAK_COLOR;
+	else color = CHANNEL_LIN_PEAK_COLOR;
+
+	vline(buffer, x, y1, y2, color);
 
 	if (rms)
 	{
