@@ -47,11 +47,15 @@
 static int16_t *samples;
 static int numsamples; // Number of samples per channel.
 static int zoom = 1; /* Number of samples in each pixel. */
+static int vzoom = 0; /* Amplitude shown as 2^this times real amplitude. */
 static int pos = 0; /* Sample value at leftmost pixel. */
 static int logdisp = 0; /* Use logarithmic display? */
 static int peakdisp = 1; /* Show peaks? */
 static int rmsdisp = 0; /* Show RMS averages? */
 static BITMAP *buffer;
+
+#define VZOOM_MIN 0
+#define VZOOM_MAX 15
 
 /* Peak and RMS info about blocks. */
 #define SAMPLES_PER_BLOCK 1024
@@ -373,7 +377,15 @@ static void drawcolumn(int x, int top, int height, int min, int max, int rms)
 
 	if (!logdisp) /* Linear display. */
 	{
+		int scalecount;
 		int ycenter = top + height/2;
+
+		for (scalecount = vzoom; scalecount > 0; scalecount--)
+		{
+			min *= 2;
+			max *= 2;
+		}
+
 		y1 = ycenter - (int)(max * height/2 / SAMP_DIV_FLOAT);
 		y2 = ycenter - (int)(min * height/2 / SAMP_DIV_FLOAT);
 	}
@@ -464,6 +476,8 @@ static void drawchannel(int top, int height, int left, int wzoom, int cols,
 	int max, min;
 	int skiprms;
 
+	set_clip_rect(buffer, left, top, left + cols - 1, top + height - 1);
+
 	if (!(height & 1)) height--; /* force an odd height */
 
 	lastpeaky1 = lastpeaky2 = lastrmsy1 = lastrmsy2 = top + height/2;
@@ -512,6 +526,8 @@ static void drawchannel(int top, int height, int left, int wzoom, int cols,
 				-rmsint, rmsint, 1);
 		}
 	}
+
+	set_clip_rect(buffer, 0, 0, buffer->w, buffer->h);
 }
 
 static const char *makemarker(double timepos, double interval)
@@ -632,6 +648,16 @@ static int cycle(void)
 		if (zoom > numsamples/SCRWIDTH)
 			zoom = numsamples/SCRWIDTH;
 		pos -= SCRWIDTH*zoom/2;
+	}
+	else if (keyval == KEY_F3) /* vertical zoom out */
+	{
+		if (vzoom > VZOOM_MIN)
+			vzoom--;
+	}
+	else if (keyval == KEY_F4) /* vertical zoom in */
+	{
+		if (vzoom < VZOOM_MAX)
+			vzoom++;
 	}
 	else if (tolower(keyascii) == 'l') /* toggle log view */
 		logdisp = !logdisp;
