@@ -32,8 +32,8 @@
 #define MIN(a,b) ((a) < (b) ? (a) : (b))
 #define MAX(a,b) ((a) > (b) ? (a) : (b))
 
-#define SCRWIDTH 640
-#define SCRHEIGHT 480
+#define DEF_SCRWIDTH 640
+#define DEF_SCRHEIGHT 480
 #define RATE 44100
 
 #define READKEY(val,ascii) do {		\
@@ -43,6 +43,9 @@
 	ascii = val & 0xff;		\
 	val >>= 8;			\
 } while(0)
+
+static int scrwidth = DEF_SCRWIDTH;
+static int scrheight = DEF_SCRHEIGHT;
 
 static int16_t *samples;
 static int numsamples; // Number of samples per channel.
@@ -599,15 +602,15 @@ static void draw(void)
 
 	for (ch = 0; ch < 2; ch++)
 	{
-		drawchannel(ch * SCRHEIGHT/2, SCRHEIGHT/2 - FONTHEIGHT,
-			0, zoom, SCRWIDTH, ch, pos);
-		drawtimemarkers((ch+1) * SCRHEIGHT/2 - FONTHEIGHT, 0,
-			SCRWIDTH, pos, zoom*SCRWIDTH);
+		drawchannel(ch * scrheight/2, scrheight/2 - FONTHEIGHT,
+			0, zoom, scrwidth, ch, pos);
+		drawtimemarkers((ch+1) * scrheight/2 - FONTHEIGHT, 0,
+			scrwidth, pos, zoom*scrwidth);
 	}
 
 	scare_mouse();
 	vsync();
-	blit(buffer, screen, 0, 0, 0, 0, SCRWIDTH, SCRHEIGHT);
+	blit(buffer, screen, 0, 0, 0, 0, scrwidth, scrheight);
 	unscare_mouse();
 }
 
@@ -622,32 +625,32 @@ static int cycle(void)
 	draw();
 	READKEY(keyval, keyascii);
 	if (keyval == KEY_PGUP)
-		pos -= SCRWIDTH * zoom;
+		pos -= scrwidth * zoom;
 	else if (keyval == KEY_PGDN)
-		pos += SCRWIDTH * zoom;
+		pos += scrwidth * zoom;
 	else if (keyval == KEY_LEFT)
-		pos -= SCRWIDTH * zoom / SCREEN_INTERVAL;
+		pos -= scrwidth * zoom / SCREEN_INTERVAL;
 	else if (keyval == KEY_RIGHT)
-		pos += SCRWIDTH * zoom / SCREEN_INTERVAL;
+		pos += scrwidth * zoom / SCREEN_INTERVAL;
 	else if (keyval == KEY_HOME)
 		pos = 0;
 	else if (keyval == KEY_END)
-		pos = numsamples - SCRWIDTH*zoom;
+		pos = numsamples - scrwidth*zoom;
 	else if (keyval == KEY_UP) /* zoom in */
 	{
-		pos += SCRWIDTH*zoom/2;
+		pos += scrwidth*zoom/2;
 		zoom /= 2;
 		if (zoom < 1)
 			zoom = 1;
-		pos -= SCRWIDTH*zoom/2;
+		pos -= scrwidth*zoom/2;
 	}
 	else if (keyval == KEY_DOWN) /* zoom out */
 	{
-		pos += SCRWIDTH*zoom/2;
+		pos += scrwidth*zoom/2;
 		zoom *= 2;
-		if (zoom > numsamples/SCRWIDTH)
-			zoom = numsamples/SCRWIDTH;
-		pos -= SCRWIDTH*zoom/2;
+		if (zoom > numsamples/scrwidth)
+			zoom = numsamples/scrwidth;
+		pos -= scrwidth*zoom/2;
 	}
 	else if (keyval == KEY_F3) /* vertical zoom out */
 	{
@@ -668,12 +671,17 @@ static int cycle(void)
 	else if (keyval == KEY_ESC) /* quit */
 		return 1;
 
-	if (pos > numsamples - SCRWIDTH*zoom)
-		pos = numsamples - SCRWIDTH*zoom;
+	if (pos > numsamples - scrwidth*zoom)
+		pos = numsamples - scrwidth*zoom;
 	if (pos < 0)
 		pos = 0;
 
 	return 0;
+}
+
+static void usage(void)
+{
+	errquit("usage: viewwav file.raw");
 }
 
 int main(int argc, char *argv[])
@@ -691,25 +699,46 @@ int main(int argc, char *argv[])
 		errquit("can't install keyboard handler: %s", allegro_error);
 	if (install_timer() != 0)
 		errquit("can't install timers: %s", allegro_error);
-	if (set_gfx_mode(GFX_AUTODETECT_WINDOWED, SCRWIDTH, SCRHEIGHT, 0, 0)
-		!= 0)
-	{
-		errquit("can't set graphics mode: %s", allegro_error);
-	}
-	buffer = create_bitmap(SCRWIDTH, SCRHEIGHT);
-	if (buffer == NULL)
-		errquit("can't create buffer: %s", allegro_error);
-	show_mouse(screen);
 
-	if (argc != 2)
-		errquit("incorrect usage; usage: viewwav file.wav");
-	if (strcmp("-", argv[1]) == 0)
+	if (argc < 2)
+		usage();
+	argc--, argv++;
+
+	while (argc > 1)
+	{
+		if (!strcmp("-width", *argv) && argc > 2)
+		{
+			scrwidth = atoi(argv[1]);
+			if (scrwidth < 5) errquit("screen width too small");
+			argc -= 2, argv += 2;
+		}
+		else if (!strcmp("-height", *argv) && argc > 2)
+		{
+			scrheight = atoi(argv[1]);
+			if (scrheight < 5) errquit("screen width too small");
+			argc -= 2, argv += 2;
+		}
+		else usage();
+	}
+
+	if (strcmp("-", *argv) == 0)
 	{
 		fp = stdin;
 		SET_BINARY_MODE
 	}
-	else if ((fp = fopen(argv[1], "rb")) == NULL)
+	else if ((fp = fopen(*argv, "rb")) == NULL)
 		errquit("cannot open %s", argv[1]);
+
+	if (set_gfx_mode(GFX_AUTODETECT_WINDOWED, scrwidth, scrheight, 0, 0)
+		!= 0)
+	{
+		errquit("can't set graphics mode: %s", allegro_error);
+	}
+	buffer = create_bitmap(scrwidth, scrheight);
+	if (buffer == NULL)
+		errquit("can't create buffer: %s", allegro_error);
+	show_mouse(screen);
+
 	data = readfile(fp, &datalen);
 	/* XXX todo: swap if big endian */
 	if (fp != stdin)
