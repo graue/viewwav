@@ -34,7 +34,9 @@
 
 #define DEF_SCRWIDTH 640
 #define DEF_SCRHEIGHT 480
-#define RATE 44100
+#define DEF_RATE 44100
+
+static int samprate = DEF_RATE;
 
 #define READKEY(val,ascii) do {		\
 	while (!keypressed())		\
@@ -95,7 +97,7 @@ enum
 #define MARKER_FG WHITE
 #define MARKER_TEXT WHITE
 
-#define RMS_MIN_SAMPLES ((int)(RATE * 0.001))
+#define RMS_MIN_SAMPLES(rate) ((int)(rate * 0.001))
 
 #define GETSAMP(n,s,o)				\
 	if ((n) >= numsamples)			\
@@ -486,7 +488,7 @@ static void drawchannel(int top, int height, int left, int wzoom, int cols,
 	lastpeaky1 = lastpeaky2 = lastrmsy1 = lastrmsy2 = top + height/2;
 
 	/* If there are too few samples for each column, skip RMS. */
-	skiprms = rmsdisp ? (wzoom < RMS_MIN_SAMPLES) : 1;
+	skiprms = rmsdisp ? (wzoom < RMS_MIN_SAMPLES(samprate)) : 1;
 
 	rectfill(buffer, left, top, left + cols - 1, top + height - 1,
 		CHANNEL_BG);
@@ -565,10 +567,10 @@ static void drawtimemarkers(int top, int left, int width, int start, int num)
 	double t;
 	double startsecs, endsecs; /* start and end of visible part, in secs */
 
-	totaltime = (double)num / RATE; /* time in seconds */
+	totaltime = (double)num / samprate; /* time in seconds */
 	secsperpixel = totaltime / width;
-	startsecs = (double)start / RATE;
-	endsecs = (double)(start + num) / RATE;
+	startsecs = (double)start / samprate;
+	endsecs = (double)(start + num) / samprate;
 
 	/*
 	 * Divide markerinterval by 10 as long as there's still room
@@ -581,7 +583,7 @@ static void drawtimemarkers(int top, int left, int width, int start, int num)
 	}
 
 	/* Find the first marker interval, where it should be. */
-	t = (double)start / RATE;
+	t = (double)start / samprate;
 	if (fmod(t, markerinterval) > DBL_EPSILON)
 		t += markerinterval - fmod(t, markerinterval);
 	for (; t < endsecs; t += markerinterval)
@@ -689,6 +691,14 @@ int main(int argc, char *argv[])
 	void *data;
 	int datalen;
 	FILE *fp;
+	const char *str;
+
+	// Set sample rate based on environment variable.
+	str = getenv("RATE");
+	if (str == NULL)
+		str = getenv("SR");
+	if (str != NULL && atoi(str) > 0)
+		samprate = atoi(str);
 
 	if (allegro_init() != 0)
 	{
