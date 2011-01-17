@@ -14,6 +14,6 @@ void errquit(const char *msg, ...)
 
 	if (screen != NULL)
 		set_gfx_mode(GFX_TEXT, 0, 0, 0, 0);
-	allegro_message(str);
+	allegro_message("%s", str);
 	exit(EXIT_FAILURE);
 }
