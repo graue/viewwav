@@ -13,7 +13,7 @@ song. And it's fast.
 
 Screenshot viewing the track "Burning Wheel" by Primal Scream. Green is
 peak level, cyan is an
-[https://en.wikipedia.org/wiki/Root_mean_square](RMS average) that
+[RMS average](https://en.wikipedia.org/wiki/Root_mean_square) that
 better reflects perceived loudness. The RMS display is off by default
 and is toggled by pressing 'r'.
 
