@@ -9,7 +9,7 @@ uses the Allegro game library) and cannot play or edit audio, only view
 it. It is however pretty good at revealing the overall dynamics of a
 song. And it's fast.
 
-![[screenshot]](//raw.github.com/graue/viewwav/master/screenshot-linear.png)
+![[screenshot]](https://raw.github.com/graue/viewwav/master/screenshot-linear.png)
 
 Screenshot viewing the track "Burning Wheel" by Primal Scream. Green is
 peak level, cyan is an
@@ -17,7 +17,7 @@ peak level, cyan is an
 better reflects perceived loudness. The RMS display is off by default
 and is toggled by pressing 'r'.
 
-![[screenshot]](//raw.github.com/graue/viewwav/master/screenshot-log.png)
+![[screenshot]](https://raw.github.com/graue/viewwav/master/screenshot-log.png)
 
 Same track in logarithmic view, toggled by pressing 'l'. The distance
 between adjacent grey lines is 6dB. Here the cyan-colored RMS trace
