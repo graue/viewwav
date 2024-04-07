@@ -1,7 +1,8 @@
 #include <stdio.h>
+#include <stdint.h>
 #include "xm.h"
 
-void *readfile(FILE *fp, int *len)
+void *readfile(FILE *fp, uint32_t *len)
 {
 	char *buf = NULL;
 	int nbuf = 0, sbuf = 0;

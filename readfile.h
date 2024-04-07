@@ -1,1 +1,3 @@
-void *readfile(FILE *fp, int *len);
+#include <stdint.h>
+
+void *readfile(FILE *fp, uint32_t *len);

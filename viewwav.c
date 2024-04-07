@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
@@ -32,8 +33,8 @@
 #define MIN(a,b) ((a) < (b) ? (a) : (b))
 #define MAX(a,b) ((a) > (b) ? (a) : (b))
 
-#define DEF_SCRWIDTH 640
-#define DEF_SCRHEIGHT 480
+#define DEF_SCRWIDTH 800
+#define DEF_SCRHEIGHT 600
 #define DEF_RATE 44100
 
 static int samprate = DEF_RATE;
@@ -681,19 +682,85 @@ static int cycle(void)
 	return 0;
 }
 
+static void initfromwav(char *data, uint32_t datalen) {
+	uint16_t channels;
+	uint16_t formattag;
+	uint16_t bitdepth;
+	uint32_t fmtchunklen;
+	uint32_t offset;
+	uint32_t chunklen;
+	uint32_t wavsamplerate;
+	int i;
+
+	/*
+	 * TODO: support wav files with lengths (of both file and data chunk)
+	 * given as 0xFFFFFFFF by simply reading until end of file.
+	 * This is what madplay produces on stdout.
+	 */
+	if (datalen < 44 || memcmp(data, "RIFF", 4) ||
+		memcmp(&data[8], "WAVEfmt ", 8) ||
+		le32toh(*(uint32_t *)&data[4]) + 8 != datalen) {
+		errquit("invalid .wav file");
+	}
+	fmtchunklen = le32toh(*(uint32_t *)&data[16]);
+	formattag = le16toh(*(uint16_t *)&data[20]);
+	channels = le16toh(*(uint16_t *)&data[22]);
+	wavsamplerate = le32toh(*(uint32_t *)&data[24]);
+	bitdepth = le16toh(*(uint16_t *)&data[34]);
+	if (formattag == 0xFFFE)
+		formattag = le16toh(*(uint16_t *)&data[44]);
+	if (formattag != 0x0001)
+		errquit("non-PCM wav data: format tag %u", formattag);
+	if (wavsamplerate > 384000)
+		errquit("unsupported sample rate %u", wavsamplerate);
+	samprate = (int)wavsamplerate;
+	if (channels != 2)
+		errquit("non-stereo wav files not supported");
+
+	/* Find data chunk */
+	offset = 16 + 4 + fmtchunklen;
+	while (1) {
+		if (offset + 8 > datalen)
+			errquit("wav has no data chunk");
+
+		chunklen = le32toh(*(uint32_t *)&data[offset + 4]);
+		if (memcmp(&data[offset], "data", 4) == 0) break;
+		offset += chunklen;
+	}
+	offset += 8; /* Skip data chunk ID and len */
+	if (offset + chunklen != datalen)
+		errquit("invalid .wav file: data chunk wrong size");
+	numsamples = chunklen / channels / (bitdepth / 8);
+	if (bitdepth == 16) {
+		samples = (int16_t *)&data[offset];
+		for (i = 0; i < numsamples; i++)
+			samples[i] = le16toh(samples[i]);
+	} else if (bitdepth == 24) {
+		samples = xm(2, numsamples * channels);
+		for (i = 0; i < numsamples * channels; i++) {
+			samples[i] = (int16_t)data[offset + i*3 + 1]
+				+ ((int16_t)data[offset + i*3 + 2]<<8);
+		}
+	} else errquit("unsupported bit depth: %u", bitdepth);
+}
+
 static void usage(void)
 {
-	errquit("usage: viewwav file.raw");
+	errquit("usage: viewwav [-width X] [-height Y] [-forceraw] filename");
 }
 
 int main(int argc, char *argv[])
 {
-	void *data;
-	int datalen;
+	char *data;
+	char *filename;
+	uint32_t datalen;
 	FILE *fp;
 	const char *str;
+	bool iswav;
+	bool forceraw = false;
+	int i;
 
-	// Set sample rate based on environment variable.
+	// Default sample rate based on environment variable.
 	str = getenv("RATE");
 	if (str == NULL)
 		str = getenv("SR");
@@ -728,16 +795,22 @@ int main(int argc, char *argv[])
 			if (scrheight < 5) errquit("screen width too small");
 			argc -= 2, argv += 2;
 		}
+		else if (!strcmp("-forceraw", *argv))
+		{
+			forceraw = true;
+			argc--, argv++;
+		}
 		else usage();
 	}
 
-	if (strcmp("-", *argv) == 0)
+	filename = *argv;
+	if (strcmp("-", filename) == 0)
 	{
 		fp = stdin;
 		SET_BINARY_MODE
 	}
-	else if ((fp = fopen(*argv, "rb")) == NULL)
-		errquit("cannot open %s", argv[1]);
+	else if ((fp = fopen(filename, "rb")) == NULL)
+		errquit("cannot open %s", filename);
 
 	if (set_gfx_mode(GFX_AUTODETECT_WINDOWED, scrwidth, scrheight, 0, 0)
 		!= 0)
@@ -750,12 +823,34 @@ int main(int argc, char *argv[])
 	show_mouse(screen);
 
 	data = readfile(fp, &datalen);
-	/* XXX todo: swap if big endian */
 	if (fp != stdin)
 		fclose(fp);
 
-	samples = data;
-	numsamples = datalen / (2 * sizeof (int16_t));
+	/* Is it a wav file? On stdin, sniff; from file, check extension. */
+	if (!forceraw && fp == stdin && datalen > 1000 &&
+		memcmp(data, "RIFF", 4) == 0 &&
+		memcmp((data + 8), "WAVEfmt ", 8) == 0)
+	{
+		iswav = true;
+	}
+	else if (!forceraw && strlen(filename) > 4 && datalen > 1000 &&
+		strcasecmp(&filename[strlen(filename) - 4], ".wav") == 0)
+	{
+		iswav = true;
+	}
+	else iswav = false;
+
+	if (iswav)
+	{
+		initfromwav(data, datalen);
+	}
+	else
+	{
+		samples = (int16_t *)data;
+		numsamples = datalen / (2 * sizeof (int16_t));
+		for (i = 0; i < numsamples; i++)
+			samples[i] = le16toh(samples[i]);
+	}
 	initblocks();
 	while (!cycle())
 		;
